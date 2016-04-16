@@ -1,0 +1,112 @@
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      warning=FALSE, message=FALSE)
+```
+
+# Exploratory analysis of "Individual household electric power consumption Data Set"
+
+Data from https://archive.ics.uci.edu/ml/datasets/Individual+household+electric+power+consumption
+
+The data set consists of 2075259 measurements taken by EDF Energy from December 2006 to November 2010. 
+
+First, we read in the data.  As this is a large dataset, specifying the separators and column classes in advance will speed up reading it in.
+
+```{r cache=TRUE}
+myTable=read.table(file = "household_power_consumption.txt", header=T, sep=";", colClasses = c("character","character","numeric","numeric","numeric","numeric","numeric","numeric","numeric"), na.strings="?")
+```
+Next, let's convert the date column from numeric objects to R Date objects, and then examine this new variable.
+
+```{r}
+myTable$Date=as.Date(myTable$Date, format="%d/%m/%Y")
+summary(myTable$Date)
+```
+
+We can see from this summary that observations were collected between 16th December 2006 and 26th November 2010.
+
+```{r echo=FALSE, message=FALSE}
+library(ggplot2)
+```
+
+## Plotting power consumption
+
+Let's take a look at the power consumption, first by examining the summary statistics and then by plotting a histogram.  The variable we are examining is "Global active power", the "household global minute-averaged active power".
+
+```{r message=FALSE, cache=TRUE}
+summary(myTable$Global_active_power)
+```
+
+We can see here that about 1% of our values are NAs.  Now let's plot our values.
+
+```{r message=FALSE, cache=TRUE}
+
+ggplot(data=myTable, aes(myTable$Global_active_power))+
+  geom_histogram(binwidth = 0.5)+
+  xlab("Global Active Power (kilowatts)")+
+  ggtitle("Global Active Power")+
+  theme(panel.background = element_rect(fill = rgb(248, 236, 212, maxColorValue = 255)))
+```
+
+Interesting, from our table, we can see that we have a large number of observations for 0 to 500 watts, far fewer between 500 watts and 1 kilowatt and then a higher but steadily decreasing number of observations of over 1 kilowatt.
+
+One might speculate that this represents two different types of power consumption: the first when nobody is at home or occupants are asleep, and the second when household appliances are being used.
+
+## Time
+
+Perhaps we'll get a clearer view of what's going on with the data if we plot power consumption by time.
+
+First, we need to make sure that the time variable is in the correct format.  Let's convert our Time variable, which is currently a character variable, into a POSIX calendar time variable.
+
+```{r}
+
+myTable$time_temp <- paste(myTable$Date, myTable$Time)
+myTable$Time2 <- strptime(myTable$time_temp, format = "%Y-%m-%d %H:%M:%S")
+```
+
+Due to the size of the dataset, we're just going to look at one week
+
+```{r cache=TRUE}
+myTable2=myTable[myTable$Date>="2009-02-23" & myTable$Date<="2009-03-01",]
+
+library(scales)
+ggplot(data=myTable2, aes(x=myTable2$Time2, y=myTable2$Global_active_power))+
+  geom_line()+
+  xlab("Day/Time")+
+  ylab("Global Active Power (kilowatts)")+
+  ggtitle("Global Active Power by Time")+
+  scale_x_datetime(breaks = date_breaks("1 day"),labels = date_format("%a %d/%m %H:%M"))+
+  theme(panel.background = element_rect(fill = rgb(248, 236, 212, maxColorValue = 255)))
+```
+
+If we look closely at the graph, we can see that power usage seems to roughly peak in the mornings and the evenings on weekdays, with higher usage on Friday evening, and all of Sunday.
+
+## Sub-metering
+
+The dataset includes measures about specific energy uses, and it'd be interesting to see exactly what appliances are being used at different times.  The documentation identifies the following variables of interest: 
+
+1. sub_metering_1: energy sub-metering No. 1 (in watt-hour of active energy). It corresponds to the kitchen, containing mainly a dishwasher, an oven and a microwave (hot plates are not electric but gas powered).
+
+2. sub_metering_2: energy sub-metering No. 2 (in watt-hour of active energy). It corresponds to the laundry room, containing a washing-machine, a tumble-drier, a refrigerator and a light.
+
+3. sub_metering_3: energy sub-metering No. 3 (in watt-hour of active energy). It corresponds to an electric water-heater and an air-conditioner.
+
+Once again, we're going to just look at a subsection of the data, the readings for Thursday to Sunday of the week we examined in the previous plot.
+
+```{r}
+library(scales)
+myTable3=myTable[myTable$Date>="2009-02-26" & myTable$Date<="2009-03-01",]
+
+ggplot(data=myTable3, aes(myTable3$Time2))+
+  geom_line(aes(y = myTable3$Sub_metering_1, color="Sub metering 1")) + 
+  geom_line(aes(y = myTable3$Sub_metering_2, color="Sub metering 2")) + 
+  geom_line(aes(y = myTable3$Sub_metering_3, color="Sub metering 3")) + 
+  xlab("Day/Time")+
+  ylab("Global Active Power (kilowatts)")+
+  ggtitle("Global Active Power by Time")+
+  scale_x_datetime(breaks = date_breaks("1 day"),labels = date_format("%a %d/%m %H:%M"))+
+  theme(panel.background = element_rect(fill = rgb(248, 236, 212, maxColorValue = 255)))+
+  scale_colour_manual(name='', values=c('Sub metering 1'=rgb(236, 97, 119, maxColorValue = 255), 'Sub metering 2'=rgb(59,55,80, maxColorValue = 255), 'Sub metering 3'=rgb(117, 165, 138, maxColorValue = 255)),guide='legend') 
+  
+ 
+```
+
+Here, we can see that kitchen electricity usage is pretty low on Thursdays with higher usage on Friday evening, Saturday evening, and Sunday from the afternoon until the evening.  By contrast, people seem to use their laundry rooms on Saturday morning, Saturday evening, and on Sunday around noon.  Electric water heating and air-conditioning appear to have highest usage during Friday evening, Saturday daytime, and Sunday day time.
